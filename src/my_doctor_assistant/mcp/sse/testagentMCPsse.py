@@ -43,51 +43,47 @@ OFFLINE_PROMPT_MAP = {
     "labs":         dp.LAB_RESULTS_PROMPT,
 }
 
-class _SSEClientSingleton:
-    """Reuse one SSE client + ClientSession across the whole process."""
-    _streams_cm = None           # holds the async‑context‑manager
-    _session: ClientSession | None = None
-
-    @classmethod
-    async def get_session(cls) -> ClientSession:
-        if cls._session is None:
-            # create the async‑context‑manager only once
-            cls._streams_cm = sse_client(f"{MCP_URL}/sse")
-            # manually enter the async context to obtain the two streams
-            streams = await cls._streams_cm.__aenter__()
-            cls._session = ClientSession(*streams)
-            await cls._session.initialize()
-        return cls._session
-
-
-async def _fetch_resource(uri: str) -> str:
-    """Retrieve a prompt slice via MCP resource API without closing the shared session."""
-    session = await _SSEClientSingleton.get_session()
-    resp = await session.read_resource(uri)
-    return resp.content[0].text
+async def _with_new_session(coro):
+    """Open a one‑shot SSE connection, run *coro(session)*, then close."""
+    async with sse_client(f"{MCP_URL}/sse") as streams:
+        async with ClientSession(*streams) as session:
+            await session.initialize()
+            return await coro(session)
 
 @lru_cache(maxsize=8)
 def get_domain_prompt(kind: str = "schema") -> str:
+    """Fetch & cache prompt slice, fallback to offline constant on error."""
     uri = PROMPT_URI_MAP.get(kind, PROMPT_URI_MAP["schema"])
+
+    async def _fetch(session: ClientSession):
+        resp = await session.read_resource(uri)
+        return resp.content[0].text
+
     try:
-        return asyncio.run(_fetch_resource(uri))
+        return asyncio.run(_with_new_session(_fetch))
     except Exception:
         return OFFLINE_PROMPT_MAP[kind]
     
 async def _graphdb_async(query: str) -> str:
+    """Execute GraphDB tool and return raw result string."""
     query = lowercase_literals(query)
-    session = await _SSEClientSingleton.get_session()
-    resp = await session.call_tool(TOOL_NAME, {"query": query})
-    return resp.content
-        
+
+    async def _call(session: ClientSession):
+        resp = await session.call_tool(TOOL_NAME, {"query": query})
+        return resp.content[0].text if resp.content else "No content returned."
+
+    return await _with_new_session(_call)
+
 def graphdb_sync(query: str) -> str:
+    """LangChain expects a blocking callable for Tool.func."""
     return asyncio.run(_graphdb_async(query))
+
 
 def make_graph_tool() -> Tool:
     return Tool(
-        name=TOOL_NAME,  
+        name=TOOL_NAME,
         func=graphdb_sync,
-        description="Execute Cypher against the medical Neo4j database."
+        description="Execute Cypher against the medical Neo4j database.",
     )
 
 # Agent Wrapper
