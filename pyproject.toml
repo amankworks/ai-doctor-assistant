@@ -1,0 +1,32 @@
+[project]
+name = "my-doctor-assistant"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiohttp>=3.11.16",
+    "fastmcp>=2.2.0",
+    "langchain>=0.3.23",
+    "langchain-neo4j>=0.4.0",
+    "langchain-openai>=0.3.14",
+    "mcp>=1.6.0",
+    "numpy>=2.2.4",
+    "python-dotenv>=1.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "coverage>=7.8.0",
+    "pytest>=8.3.5",
+    "ruff>=0.11.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+medical-mcp-stdio = "my_doctor_assistant.mcp.stdio.server.medical_graph_server:main"
+medical-mcp-sse   = "my_doctor_assistant.mcp.sse.server.medical_graph_server:main"
+my-doc-assist     = "my_doctor_assistant.cli:app"   # Typer entry point
