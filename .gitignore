@@ -19,9 +19,9 @@ venv/
 ENV/
 
 # Environment variable files
-*.env
-config/.env
-.env.*  
+.env*
+# dotenv environment files in config directory
+config/.env*
 
 # IDE/editor directories
 .vscode/
